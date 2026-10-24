@@ -98,7 +98,7 @@ async function handleTextMessage(db, phoneNumberId, msg) {
       businessId: business._id,
       role: "customer",
       text: msg.text.body,
-      waMessageId: msg.id,
+      ...(msg.id ? { waMessageId: msg.id } : {}),
       createdAt: new Date(),
     });
   } catch (err) {
