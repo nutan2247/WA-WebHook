@@ -33,7 +33,14 @@ const payload = JSON.stringify({
         {
           value: {
             metadata: { phone_number_id: phoneNumberId },
-            messages: [{ from, type: "text", text: { body: process.env.TEST_TEXT || "hello from test" } }],
+            messages: [
+              {
+                id: `wamid.TEST${Date.now()}`, // Meta always sends a unique id
+                from,
+                type: "text",
+                text: { body: process.env.TEST_TEXT || "hello from test" },
+              },
+            ],
           },
         },
       ],
@@ -57,4 +64,4 @@ res = await fetch(`${base}/webhook`, {
   headers: { "Content-Type": "application/json" },
   body: payload,
 });
-console.log("4) POST unsigned     :", res.status, "(expect 401)");
+console.log("4) POST unsigned     :", res.status, "(expect 401; the server log \"Rejected webhook call\" is normal here)");
