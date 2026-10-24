@@ -75,6 +75,8 @@ async function handleTextMessage(db, phoneNumberId, msg) {
 
   // Which business was messaged? The phone_number_id tells us.
   const business = await businesses.findOne({ phoneNumberId });
+  console.log("Business for phone_number_id", phoneNumberId, "is", business?.name || "none");
+  
   if (!business) {
     console.warn("No business found for phone_number_id:", phoneNumberId);
     return;
@@ -156,7 +158,6 @@ app.post("/webhook", async (req, res) => {
       receivedAt: new Date(),
       status: "received",
       payload: req.body,
-      request: req,
     });
     eventId = saved.insertedId;
 
