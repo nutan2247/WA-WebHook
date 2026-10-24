@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --env-file=.env api/index.js"
+    "dev": "node --env-file=.env api/index.js",
+    "seed": "node --env-file=.env scripts/seed.js",
+    "test:webhook": "node --env-file=.env test-webhook.js"
   },
   "dependencies": {
     "express": "^4.21.2",

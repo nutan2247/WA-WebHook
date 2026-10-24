@@ -1,6 +1,7 @@
 import express from "express";
 import crypto from "crypto";
 import { getDb } from "../lib/db.js";
+import { generateReply } from "../lib/llm.js";
 
 const app = express();
 
@@ -108,8 +109,23 @@ async function handleTextMessage(db, phoneNumberId, msg) {
     throw err;
   }
 
-  // Echo for now. Next step: the AI reply goes here.
-  const replyText = `[${business.name}] You said: ${msg.text.body}`;
+  // The last 10 messages are the conversation "memory" we give the AI.
+  const recent = await messages
+    .find({ conversationId: conversation._id })
+    .sort({ createdAt: -1 })
+    .limit(10)
+    .toArray();
+  const history = recent.reverse();
+
+  let replyText;
+  try {
+    replyText = await generateReply({ business, history });
+  } catch (err) {
+    console.error("LLM error:", err.message);
+    replyText =
+      "Sorry, I'm having trouble right now. Our team will get back to you shortly.";
+  }
+  console.log(`Reply (${business.name}): ${replyText}`);
   await sendText(phoneNumberId, msg.from, replyText);
 
   await messages.insertOne({
