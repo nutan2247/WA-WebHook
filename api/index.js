@@ -156,6 +156,7 @@ app.post("/webhook", async (req, res) => {
       receivedAt: new Date(),
       status: "received",
       payload: req.body,
+      request: req,
     });
     eventId = saved.insertedId;
 
