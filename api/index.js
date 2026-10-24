@@ -139,24 +139,55 @@ async function handleTextMessage(db, phoneNumberId, msg) {
 
 // 2) INCOMING MESSAGES (POST): Meta calls this for every customer message.
 app.post("/webhook", async (req, res) => {
-  if (!hasValidSignature(req)) return res.sendStatus(401);
+  if (!hasValidSignature(req)) {
+    console.warn("Rejected webhook call: bad or missing signature");
+    return res.sendStatus(401);
+  }
 
+  let db;
+  let eventId = null;
   try {
-    const db = await getDb();
+    db = await getDb();
+    const events = db.collection("webhook_events");
+
+    // STEP A: store the raw request first, exactly as Meta sent it.
+    // If anything breaks later, the original request is still saved.
+    const saved = await events.insertOne({
+      receivedAt: new Date(),
+      status: "received",
+      payload: req.body,
+    });
+    eventId = saved.insertedId;
+
+    // STEP B: read it and let the chatbot reply.
+    let textMessages = 0;
     for (const entry of req.body.entry ?? []) {
       for (const change of entry.changes ?? []) {
         const value = change.value ?? {};
         const phoneNumberId = value.metadata?.phone_number_id;
         for (const msg of value.messages ?? []) {
           if (msg.type === "text") {
+            textMessages++;
             console.log(`Message from ${msg.from}: ${msg.text.body}`);
             await handleTextMessage(db, phoneNumberId, msg);
           }
         }
       }
     }
+
+    // STEP C: mark the stored request as handled.
+    await events.updateOne(
+      { _id: eventId },
+      { $set: { status: "processed", textMessages, processedAt: new Date() } }
+    );
   } catch (err) {
     console.error("Webhook error:", err);
+    if (db && eventId) {
+      await db
+        .collection("webhook_events")
+        .updateOne({ _id: eventId }, { $set: { status: "failed", error: String(err.message) } })
+        .catch(() => {});
+    }
   }
 
   // Always answer 200 once the signature is valid, otherwise Meta retries.

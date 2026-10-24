@@ -17,6 +17,9 @@ await db.collection("messages").createIndex({ conversationId: 1, createdAt: 1 })
 // Meta may deliver the same message twice; a unique id lets us ignore repeats.
 await db.collection("messages").createIndex({ waMessageId: 1 }, { unique: true, sparse: true });
 
+// Stored raw webhook requests are deleted automatically after 7 days.
+await db.collection("webhook_events").createIndex({ receivedAt: 1 }, { expireAfterSeconds: 7 * 24 * 60 * 60 });
+
 const businesses = [
   {
     name: "Sunrise Clinic",
