@@ -75,8 +75,8 @@ async function handleTextMessage(db, phoneNumberId, msg) {
 
   // Which business was messaged? The phone_number_id tells us.
   const business = await businesses.findOne({ phoneNumberId });
-  console.log("Business for phone_number_id", phoneNumberId, "is", business?.name || "none");
-  
+  // console.warn("Business for phone_number_id", phoneNumberId, "is", business?.name || "none");
+
   if (!business) {
     console.warn("No business found for phone_number_id:", phoneNumberId);
     return;
@@ -166,7 +166,7 @@ app.post("/webhook", async (req, res) => {
     for (const entry of req.body.entry ?? []) {
       for (const change of entry.changes ?? []) {
         const value = change.value ?? {};
-        const phoneNumberId = value.metadata?.phone_number_id;
+        const phoneNumberId = value.metadata?.phone_number_id?.toString(); 
         for (const msg of value.messages ?? []) {
           if (msg.type === "text") {
             textMessages++;
