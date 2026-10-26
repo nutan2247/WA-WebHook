@@ -75,7 +75,8 @@ async function handleTextMessage(db, phoneNumberId, msg) {
 
   // Which business was messaged? The phone_number_id tells us.
   const business = await businesses.findOne({ phoneNumberId });
-  // console.warn("Business for phone_number_id", phoneNumberId, "is", business?.name || "none");
+  console.warn("Business for phone_number_id", phoneNumberId, "is", business?.name || "none"); 
+  return;
 
   if (!business) {
     console.warn("No business found for phone_number_id:", phoneNumberId);
