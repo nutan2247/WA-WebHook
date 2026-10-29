@@ -10,6 +10,7 @@ console.log("env check:", {
   MONGODB_DB: !!process.env.MONGODB_DB,
   GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
   WHATSAPP_TOKEN: !!process.env.WHATSAPP_TOKEN,
+  GEMINI_MODEL: process.env.GEMINI_MODEL,
 });
 
 // Keep the raw body: Meta signs the exact bytes it sends, so we need them
