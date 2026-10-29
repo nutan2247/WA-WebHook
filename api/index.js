@@ -5,14 +5,6 @@ import { generateReply } from "../lib/llm.js";
 
 const app = express();
 
-console.log("env check:", {
-  MONGODB_URI: !!process.env.MONGODB_URI,
-  MONGODB_DB: !!process.env.MONGODB_DB,
-  GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
-  WHATSAPP_TOKEN: !!process.env.WHATSAPP_TOKEN,
-  GEMINI_MODEL: process.env.GEMINI_MODEL,
-});
-
 // Keep the raw body: Meta signs the exact bytes it sends, so we need them
 // unchanged to verify the signature.
 app.use(
@@ -27,7 +19,11 @@ const { VERIFY_TOKEN, APP_SECRET, WHATSAPP_TOKEN, GRAPH_VERSION = "v21.0" } =
   process.env;
 
 // Health check: open your deployed URL in a browser to see this.
-app.get("/", (_req, res) => res.send("WhatsApp auto-reply webhook is running"));
+app.get("/", (_req, res) => {
+  // On Vercel this shows which git commit is live, so you can tell old from new.
+  const commit = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local";
+  res.send(`WhatsApp auto-reply webhook is running (version: ${commit})`);
+});
 
 // 1) VERIFICATION (GET): Meta calls this once when you save the webhook URL.
 app.get("/webhook", (req, res) => {
@@ -72,7 +68,9 @@ async function sendText(phoneNumberId, to, body) {
   });
   if (!response.ok) {
     console.error("Send failed:", response.status, await response.text());
+    return false;
   }
+  return true;
 }
 
 // Handles one customer message: find business, save, reply, save reply.
@@ -83,9 +81,6 @@ async function handleTextMessage(db, phoneNumberId, msg) {
 
   // Which business was messaged? The phone_number_id tells us.
   const business = await businesses.findOne({ phoneNumberId });
-  console.warn("Business for phone_number_id", phoneNumberId, "is", business?.name || "none"); 
-  // return;
-
   if (!business) {
     console.warn("No business found for phone_number_id:", phoneNumberId);
     return;
@@ -101,23 +96,35 @@ async function handleTextMessage(db, phoneNumberId, msg) {
     { upsert: true, returnDocument: "after" }
   );
 
-  // Save the customer's message. If Meta re-sent it, the unique waMessageId
-  // index throws error 11000 and we skip it (no double replies).
+  // Save the customer's message. Meta re-sends a message if it doesn't get a
+  // quick 200, so the same id can arrive twice. We skip it only if it was
+  // already answered (or another attempt is still working on it).
+  let customerDocId;
   try {
-    await messages.insertOne({
+    const inserted = await messages.insertOne({
       conversationId: conversation._id,
       businessId: business._id,
       role: "customer",
       text: msg.text.body,
       ...(msg.id ? { waMessageId: msg.id } : {}),
+      replied: false,
+      startedAt: new Date(),
       createdAt: new Date(),
     });
+    customerDocId = inserted.insertedId;
   } catch (err) {
-    if (err.code === 11000) {
+    if (err.code !== 11000) throw err;
+
+    const existing = await messages.findOne({ waMessageId: msg.id });
+    const stillRunning =
+      existing?.startedAt && Date.now() - existing.startedAt.getTime() < 60_000;
+    if (!existing || existing.replied || stillRunning) {
       console.log("Duplicate message, skipping:", msg.id);
       return;
     }
-    throw err;
+    console.log("Retrying a message that was never answered:", msg.id);
+    customerDocId = existing._id;
+    await messages.updateOne({ _id: customerDocId }, { $set: { startedAt: new Date() } });
   }
 
   // The last 10 messages are the conversation "memory" we give the AI.
@@ -137,15 +144,21 @@ async function handleTextMessage(db, phoneNumberId, msg) {
       "Sorry, I'm having trouble right now. Our team will get back to you shortly.";
   }
   console.log(`Reply (${business.name}): ${replyText}`);
-  await sendText(phoneNumberId, msg.from, replyText);
+  const sent = await sendText(phoneNumberId, msg.from, replyText);
 
   await messages.insertOne({
     conversationId: conversation._id,
     businessId: business._id,
     role: "bot",
     text: replyText,
+    sent,
     createdAt: new Date(),
   });
+
+  // Only mark the customer message as answered if WhatsApp accepted the reply.
+  if (sent) {
+    await messages.updateOne({ _id: customerDocId }, { $set: { replied: true } });
+  }
 }
 
 // 2) INCOMING MESSAGES (POST): Meta calls this for every customer message.
@@ -175,7 +188,7 @@ app.post("/webhook", async (req, res) => {
     for (const entry of req.body.entry ?? []) {
       for (const change of entry.changes ?? []) {
         const value = change.value ?? {};
-        const phoneNumberId = value.metadata?.phone_number_id?.toString(); 
+        const phoneNumberId = value.metadata?.phone_number_id;
         for (const msg of value.messages ?? []) {
           if (msg.type === "text") {
             textMessages++;
