@@ -5,6 +5,13 @@ import { generateReply } from "../lib/llm.js";
 
 const app = express();
 
+console.log("env check:", {
+  MONGODB_URI: !!process.env.MONGODB_URI,
+  MONGODB_DB: !!process.env.MONGODB_DB,
+  GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+  WHATSAPP_TOKEN: !!process.env.WHATSAPP_TOKEN,
+  GEMINI_MODEL: process.env.GEMINI_MODEL,
+});
 // Keep the raw body: Meta signs the exact bytes it sends, so we need them
 // unchanged to verify the signature.
 app.use(
